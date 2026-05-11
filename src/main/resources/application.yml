@@ -1,2 +1,8 @@
 server:
   port: 8080
+
+spark:
+  hdfs:
+    url: hdfs://localhost:9000
+  master: local[*]
+  app-name: AisDataQueryService

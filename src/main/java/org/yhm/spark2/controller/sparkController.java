@@ -13,9 +13,33 @@ public class sparkController {
     @Autowired
     SparkService sparkService;
 
-    // 俩个请求参数：2025-06-26 00:00:00 2025-06-26 00:00:10
+    // 原始查询：按时间窗口返回船舶位置
     @RequestMapping("/query/{start}/{end}")
     public Object queryData(@PathVariable("start") String start, @PathVariable("end") String end) {
         return sparkService.queryData(start, end);
+    }
+
+    // 1. 瞬时近距离告警：同一时刻两船距离 < 500m
+    @RequestMapping("/close-calls/{start}/{end}")
+    public Object closeCalls(@PathVariable("start") String start, @PathVariable("end") String end) {
+        return sparkService.closeCalls(start, end);
+    }
+
+    // 2. 航速突变检测：SOG 短时剧烈变化
+    @RequestMapping("/speed-anomaly/{start}/{end}")
+    public Object speedAnomaly(@PathVariable("start") String start, @PathVariable("end") String end) {
+        return sparkService.speedAnomaly(start, end);
+    }
+
+    // 3. 区域热力图：按经纬网格统计船舶密度
+    @RequestMapping("/heatmap/{start}/{end}")
+    public Object heatmap(@PathVariable("start") String start, @PathVariable("end") String end) {
+        return sparkService.heatmap(start, end);
+    }
+
+    // 4. MMSI 时空异常：同一 MMSI 不可能的位置跳变
+    @RequestMapping("/mmsi-anomaly/{start}/{end}")
+    public Object mmsiAnomaly(@PathVariable("start") String start, @PathVariable("end") String end) {
+        return sparkService.mmsiAnomaly(start, end);
     }
 }
