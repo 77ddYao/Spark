@@ -19,6 +19,12 @@ public class sparkController {
         return sparkService.queryData(start, end);
     }
 
+    // 快照查询：查询某一时刻所有船舶数据
+    @RequestMapping("/snapshot/{timestamp}")
+    public Object querySnapshot(@PathVariable("timestamp") String timestamp) {
+        return sparkService.querySnapshot(timestamp);
+    }
+
     // 1. 瞬时近距离告警：同一时刻两船距离 < 500m
     @RequestMapping("/close-calls/{start}/{end}")
     public Object closeCalls(@PathVariable("start") String start, @PathVariable("end") String end) {

@@ -9,30 +9,61 @@ import org.apache.spark.sql.expressions.WindowSpec;
 import org.springframework.stereotype.Service;
 import org.yhm.spark2.service.SparkService;
 
+import javax.annotation.PostConstruct;
+import javax.annotation.PreDestroy;
+
 import static org.apache.spark.sql.functions.*;
 
 @Service
 public class SparkServiceImpl implements SparkService {
 
     private static final Logger log = Logger.getLogger(SparkServiceImpl.class);
-    private static final String HDFS_PATH = "hdfs://localhost:9000/data/ais/raw/";
+    private static final String PARQUET_PATH = "hdfs://localhost:9000/data/ais/parquet/";
 
-    private SparkSession getSession() {
-        return SparkSession.builder()
+    private SparkSession spark;
+
+    @PostConstruct
+    public void init() {
+        spark = SparkSession.builder()
                 .appName("AisAnalysis")
                 .master("local[*]")
+                .config("spark.sql.adaptive.enabled", "true")
+                .config("spark.sql.adaptive.coalescePartitions.enabled", "true")
                 .getOrCreate();
+        log.info("SparkSession initialized. Parquet source: " + PARQUET_PATH);
+    }
+
+    @PreDestroy
+    public void cleanup() {
+        if (spark != null) {
+            spark.close();
+            log.info("SparkSession closed.");
+        }
+    }
+
+    private Dataset<Row> loadParquet() {
+        return spark.read().parquet(PARQUET_PATH);
+    }
+
+    // ============ 快照查询：查询某一时刻所有船舶数据 ============
+    @Override
+    public Object querySnapshot(String timestamp) {
+        log.info("querySnapshot: " + timestamp);
+        Dataset<Row> df = loadParquet();
+        Dataset<Row> filtered = df.filter(df.col("base_date_time").equalTo(timestamp));
+        log.info("Snapshot count: " + filtered.count());
+        String[] json = filtered.toJSON().collectAsList().toArray(new String[0]);
+        return json;
     }
 
     // ============ 原始查询 ============
     @Override
     public Object queryData(String start, String end) {
-        SparkSession spark = getSession();
-        Dataset<Row> df = spark.read().option("header", "true").option("inferSchema", "true").csv(HDFS_PATH);
+        log.info("queryData: " + start + " ~ " + end);
+        Dataset<Row> df = loadParquet();
         Dataset<Row> filtered = df.filter(df.col("base_date_time").between(start, end));
         filtered.show();
         String[] json = filtered.toJSON().collectAsList().toArray(new String[0]);
-        spark.close();
         return json;
     }
 
@@ -40,10 +71,9 @@ public class SparkServiceImpl implements SparkService {
     @Override
     public Object closeCalls(String start, String end) {
         log.info("closeCalls: " + start + " ~ " + end);
-        SparkSession spark = getSession();
 
-        Dataset<Row> raw = spark.read().option("header", "true").option("inferSchema", "true").csv(HDFS_PATH);
-        Dataset<Row> df = raw.filter(raw.col("base_date_time").between(start, end))
+        Dataset<Row> df = loadParquet()
+                .filter(col("base_date_time").between(start, end))
                 .select(
                         col("mmsi").cast("int"),
                         col("base_date_time"),
@@ -90,7 +120,6 @@ public class SparkServiceImpl implements SparkService {
 
         log.info("Close calls found: " + close.count());
         String[] json = close.toJSON().collectAsList().toArray(new String[0]);
-        spark.close();
         return json;
     }
 
@@ -98,10 +127,9 @@ public class SparkServiceImpl implements SparkService {
     @Override
     public Object speedAnomaly(String start, String end) {
         log.info("speedAnomaly: " + start + " ~ " + end);
-        SparkSession spark = getSession();
 
-        Dataset<Row> raw = spark.read().option("header", "true").option("inferSchema", "true").csv(HDFS_PATH);
-        Dataset<Row> df = raw.filter(raw.col("base_date_time").between(start, end))
+        Dataset<Row> df = loadParquet()
+                .filter(col("base_date_time").between(start, end))
                 .select(
                         col("mmsi").cast("int"),
                         to_timestamp(col("base_date_time"), "yyyy-MM-dd HH:mm:ss").alias("ts"),
@@ -120,10 +148,9 @@ public class SparkServiceImpl implements SparkService {
                 .withColumn("delta_sog", abs(col("sog").minus(col("prev_sog"))))
                 .withColumn("delta_seconds", col("ts").cast("long").minus(col("prev_ts").cast("long")))
                 .filter(col("prev_sog").isNotNull())
-                .filter(col("delta_seconds").gt(2))  // avoid same-second duplicates
+                .filter(col("delta_seconds").gt(2))
                 .withColumn("accel_kt_per_min", round(col("delta_sog").multiply(60).divide(col("delta_seconds")), 2));
 
-        // Flag anomalies: SOG change > 5 knots in 1 minute (hard braking/acceleration)
         Dataset<Row> anomaly = withDiff
                 .filter(col("accel_kt_per_min").gt(5))
                 .select(
@@ -140,7 +167,6 @@ public class SparkServiceImpl implements SparkService {
 
         log.info("Speed anomalies: " + anomaly.count());
         String[] json = anomaly.toJSON().collectAsList().toArray(new String[0]);
-        spark.close();
         return json;
     }
 
@@ -148,10 +174,9 @@ public class SparkServiceImpl implements SparkService {
     @Override
     public Object heatmap(String start, String end) {
         log.info("heatmap: " + start + " ~ " + end);
-        SparkSession spark = getSession();
 
-        Dataset<Row> raw = spark.read().option("header", "true").option("inferSchema", "true").csv(HDFS_PATH);
-        Dataset<Row> df = raw.filter(raw.col("base_date_time").between(start, end))
+        Dataset<Row> df = loadParquet()
+                .filter(col("base_date_time").between(start, end))
                 .select(
                         col("longitude").cast("double").alias("lon"),
                         col("latitude").cast("double").alias("lat")
@@ -183,7 +208,6 @@ public class SparkServiceImpl implements SparkService {
 
         log.info("Heatmap cells: " + result.count());
         String[] json = result.toJSON().collectAsList().toArray(new String[0]);
-        spark.close();
         return json;
     }
 
@@ -191,10 +215,9 @@ public class SparkServiceImpl implements SparkService {
     @Override
     public Object mmsiAnomaly(String start, String end) {
         log.info("mmsiAnomaly: " + start + " ~ " + end);
-        SparkSession spark = getSession();
 
-        Dataset<Row> raw = spark.read().option("header", "true").option("inferSchema", "true").csv(HDFS_PATH);
-        Dataset<Row> df = raw.filter(raw.col("base_date_time").between(start, end))
+        Dataset<Row> df = loadParquet()
+                .filter(col("base_date_time").between(start, end))
                 .select(
                         col("mmsi").cast("int"),
                         to_timestamp(col("base_date_time"), "yyyy-MM-dd HH:mm:ss").alias("ts"),
@@ -224,7 +247,6 @@ public class SparkServiceImpl implements SparkService {
                 .withColumn("distance_m", expr(haversineExpr))
                 .withColumn("speed_kt", round(col("distance_m").multiply(1.94384).divide(col("time_diff_sec")), 1));
 
-        // Detect: calculated speed between two points > 50 knots (physically impossible for most ships)
         Dataset<Row> anomaly = withAnomaly
                 .filter(col("speed_kt").gt(50))
                 .select(
@@ -239,7 +261,6 @@ public class SparkServiceImpl implements SparkService {
 
         log.info("MMSI anomalies: " + anomaly.count());
         String[] json = anomaly.toJSON().collectAsList().toArray(new String[0]);
-        spark.close();
         return json;
     }
 }

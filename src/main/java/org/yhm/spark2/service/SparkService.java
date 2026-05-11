@@ -6,4 +6,5 @@ public interface SparkService {
     Object speedAnomaly(String start, String end);
     Object heatmap(String start, String end);
     Object mmsiAnomaly(String start, String end);
+    Object querySnapshot(String timestamp);
 }
