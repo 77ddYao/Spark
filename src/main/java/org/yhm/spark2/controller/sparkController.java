@@ -48,4 +48,12 @@ public class sparkController {
     public Object mmsiAnomaly(@PathVariable("start") String start, @PathVariable("end") String end) {
         return sparkService.mmsiAnomaly(start, end);
     }
+
+    // 5. 航迹生成：指定 MMSI 船只按时间戳的线性轨迹
+    @RequestMapping("/track/{mmsi}/{start}/{end}")
+    public Object vesselTrack(@PathVariable("mmsi") String mmsi,
+                               @PathVariable("start") String start,
+                               @PathVariable("end") String end) {
+        return sparkService.vesselTrack(mmsi, start, end);
+    }
 }

@@ -1,5 +1,12 @@
 server:
   port: 8080
+  tomcat:
+    connection-timeout: 300000
+
+spring:
+  mvc:
+    async:
+      request-timeout: 300000
 
 spark:
   hdfs:

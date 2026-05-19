@@ -7,4 +7,5 @@ public interface SparkService {
     Object heatmap(String start, String end);
     Object mmsiAnomaly(String start, String end);
     Object querySnapshot(String timestamp);
+    Object vesselTrack(String mmsi, String start, String end);
 }
